@@ -71,7 +71,7 @@ public class StompTCPServer<T> implements Server<T> {
                 handlerThread.start();
                 System.out.println("Handler thread started");
                 
-                // Give thread time to initialize streams
+                // give thread time to initialize streams
                 try { Thread.sleep(10); } catch (InterruptedException e) {}
                 
                 protocol.start(connectionId, connections);

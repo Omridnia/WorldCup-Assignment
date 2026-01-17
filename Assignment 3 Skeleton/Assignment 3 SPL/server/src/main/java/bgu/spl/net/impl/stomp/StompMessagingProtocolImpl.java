@@ -71,21 +71,24 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         }
 
         else if(command.equals("SEND")){
-            // find destination header
+            // find destination header and optional filename
             String destination = null;
+            String filename = null;
             int bodyStartLine = -1;
 
             for (int i = 1; i < lines.length; i++) {
                 if (lines[i].startsWith("destination:")) {
-                destination = lines[i].substring(12).trim();
-            }
+                    destination = lines[i].substring(12).trim();
+                }
+                if (lines[i].startsWith("filename:")) {
+                    filename = lines[i].substring(9).trim();
+                }
                 if (lines[i].isEmpty()) {
                     bodyStartLine = i + 1; // Body starts after empty line
                     break;
                 }
             }
-            
-            // validate if destination exists
+
             if (destination == null) {
                 connections.send(connectionId, "ERROR\nmessage:Missing destination\n\n\0");
                 shouldTerminate = true;
@@ -103,18 +106,25 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             // extract body (everything after empty line)
             StringBuilder body = new StringBuilder();
             for (int i = bodyStartLine; i < lines.length; i++) {
-            body.append(lines[i]).append("\n");
+                body.append(lines[i]).append("\n");
             }
 
+            // special endpoint to request server report
+            if (destination.equals("/app/report")) {
+                String report = Database.getInstance().generateReport();
+                String reply = "MESSAGE\ndestination:/app/report\n\n" + report + "\0";
+                connections.send(connectionId, reply);
+                return null;
+            }
 
-            // build MESSAGE frame to send to subscribers
-            String messageFrame = "MESSAGE\ndestination:" + destination + "\n\n" 
-                + body.toString() + "\0";
-    
-            // send to all subscribers of this channel
+            // persist file upload metadata when filename header present
+            if (filename != null && !filename.isEmpty()) {
+                Database.getInstance().trackFileUpload(sender.name, filename, destination);
+            }
+
+            // build and broadcast MESSAGE frame
+            String messageFrame = "MESSAGE\ndestination:" + destination + "\n\n" + body.toString() + "\0";
             connections.send(destination, messageFrame);
-            
-
         }
 
         else if(command.equals("SUBSCRIBE")){
